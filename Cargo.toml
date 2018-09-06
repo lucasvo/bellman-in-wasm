@@ -9,7 +9,11 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wasm-bindgen="0.2"
-bellman="0.1.0"
-pairing = "0.14"
+#bellman= {path="/home/vagrant/work/zbi/bellman"}
+bellman = "0.1"
+#pairing = "{path="/home/vagrant/work/zbi/pairing"}
 rand = "0.4"
 
+[dependencies.pairing]
+version = "0.14.2"
+features = ["expose-arith"]

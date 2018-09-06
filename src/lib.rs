@@ -6,7 +6,7 @@ extern crate wasm_bindgen;
 use wasm_bindgen::prelude::*;
 
 // For randomness (during paramgen and proof generation)
-use rand::Rng;
+use rand::{thread_rng, Rng};
 
 #[wasm_bindgen]
 extern "C" {
@@ -31,12 +31,19 @@ use bellman::{
     ConstraintSystem,
     SynthesisError,
 };
-//    Proof,
-    //generate_random_parameters,
-    //prepare_verifying_key,
-    //create_random_proof,
-//    verify_proof,
-//};
+
+// For benchmarking
+use std::time::{Duration, Instant};
+
+// We're going to use the Groth16 proving system.
+use bellman::groth16::{
+    Proof,
+    generate_random_parameters,
+    prepare_verifying_key,
+    create_random_proof,
+    verify_proof,
+};
+
 
 const MIMC_ROUNDS: usize = 322;
 
@@ -169,18 +176,88 @@ impl<'a, E: Engine> Circuit<E> for MiMCDemo<'a, E> {
     }
 }
 
+use std::io::BufWriter;
+
 #[wasm_bindgen]
 pub fn run_mimc() {
-    // Obviously not safe
-    let rng = &mut rand::ChaChaRng::new_unseeded();
+    // This may not be cryptographically safe, use
+    // `OsRng` (for example) in production software.
+    let rng = &mut thread_rng();
+
+    // Generate the MiMC round constants
     let constants = (0..MIMC_ROUNDS).map(|_| rng.gen()).collect::<Vec<_>>();
-    let cs = &mut Namespace{};
+
+    println!("Creating parameters...");
+
     // Create parameters for our circuit
-    let c = MiMCDemo::<Bls12> {
-        xl: None,
-        xr: None,
-        constants: &constants
+    let params = {
+        let c = MiMCDemo::<Bls12> {
+            xl: None,
+            xr: None,
+            constants: &constants
+        };
+
+        generate_random_parameters(c, rng).unwrap()
     };
-    c.synthesize(cs);
-    log(&format!("MiMC: {}", "BLAH"))
+
+    // Prepare the verification key (for proof verification)
+    let pvk = prepare_verifying_key(&params.vk);
+
+    println!("Creating proofs...");
+
+    // Let's benchmark stuff!
+    const SAMPLES: u32 = 50;
+    let mut total_proving = Duration::new(0, 0);
+    let mut total_verifying = Duration::new(0, 0);
+
+    // Just a place to put the proof data, so we can
+    // benchmark deserialization.
+    let mut proof_vec = vec![];
+
+    for _ in 0..SAMPLES {
+        // Generate a random preimage and compute the image
+        let xl = rng.gen();
+        let xr = rng.gen();
+        let image = mimc::<Bls12>(xl, xr, &constants);
+
+        proof_vec.truncate(0);
+
+        let start = Instant::now();
+        {
+            // Create an instance of our circuit (with the
+            // witness)
+            let c = MiMCDemo {
+                xl: Some(xl),
+                xr: Some(xr),
+                constants: &constants
+            };
+
+            // Create a groth16 proof with our parameters.
+            let proof = create_random_proof(c, &params, rng).unwrap();
+
+            proof.write(&mut proof_vec).unwrap();
+        }
+
+        total_proving += start.elapsed();
+
+        let start = Instant::now();
+        let proof = Proof::read(&proof_vec[..]).unwrap();
+        // Check the proof
+        assert!(verify_proof(
+            &pvk,
+            &proof,
+            &[image]
+        ).unwrap());
+        total_verifying += start.elapsed();
+    }
+    let proving_avg = total_proving / SAMPLES;
+    let proving_avg = proving_avg.subsec_nanos() as f64 / 1_000_000_000f64
+                      + (proving_avg.as_secs() as f64);
+
+    let verifying_avg = total_verifying / SAMPLES;
+    let verifying_avg = verifying_avg.subsec_nanos() as f64 / 1_000_000_000f64
+                      + (verifying_avg.as_secs() as f64);
+
+    println!("Average proving time: {:?} seconds", proving_avg);
+    println!("Average verifying time: {:?} seconds", verifying_avg);
 }
