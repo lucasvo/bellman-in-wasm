@@ -6,7 +6,7 @@ extern crate wasm_bindgen;
 use wasm_bindgen::prelude::*;
 
 // For randomness (during paramgen and proof generation)
-use rand::{thread_rng, Rng};
+use rand::Rng;
 
 #[wasm_bindgen]
 extern "C" {
@@ -176,13 +176,11 @@ impl<'a, E: Engine> Circuit<E> for MiMCDemo<'a, E> {
     }
 }
 
-use std::io::BufWriter;
-
 #[wasm_bindgen]
 pub fn run_mimc() {
     // This may not be cryptographically safe, use
     // `OsRng` (for example) in production software.
-    let rng = &mut thread_rng();
+    let rng = &mut rand::ChaChaRng::new_unseeded();
 
     // Generate the MiMC round constants
     let constants = (0..MIMC_ROUNDS).map(|_| rng.gen()).collect::<Vec<_>>();
