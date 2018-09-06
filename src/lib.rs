@@ -176,6 +176,11 @@ impl<'a, E: Engine> Circuit<E> for MiMCDemo<'a, E> {
     }
 }
 
+#[test]
+pub fn test_mimc() {
+    run_mimc()
+}
+
 #[wasm_bindgen]
 pub fn run_mimc() {
     // This may not be cryptographically safe, use
@@ -204,7 +209,7 @@ pub fn run_mimc() {
     println!("Creating proofs...");
 
     // Let's benchmark stuff!
-    const SAMPLES: u32 = 50;
+    const SAMPLES: u32 = 2;
     let mut total_proving = Duration::new(0, 0);
     let mut total_verifying = Duration::new(0, 0);
 
